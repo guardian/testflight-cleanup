@@ -53,18 +53,33 @@
       </BuildableProductRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "409128287"
+            argument = "--app-id 409128287"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkJLSkJIWFZENE9OTSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyIiwiaWF0IjoxNzg0MjkzODc0LCJleHAiOjE3ODQyOTUwNjMsImF1ZCI6ImFwcHN0b3JlY29ubmVjdC12MSIsInNjb3BlIjpbIkdFVCAvdjEvYmV0YVRlc3RlcnM_ZmlsdGVyW2FwcHNdPTQwOTEyODI4NyJdfQ.0p0uSbzMMtj1Z4uZPoPCgMyI5HnB-X1hiCRIF25aLG4mBG87xNfTn3wTat0R2W8NkLjKMIQikIuTsltau0vRoQ"
+            argument = "--token eyJhbGciOiJFUzI1NiIsImtpZCI6IkJLSkJIWFZENE9OTSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyIiwiaWF0IjoxNzg0MzAwNjQ1LCJleHAiOjE3ODQzMDE5NjQsImF1ZCI6ImFwcHN0b3JlY29ubmVjdC12MSJ9.n8TGANk7XH7SCghVyJPIqPVWv4tVz_cOoa5skDJBqRKGV1Rw6jxl2XdwMKh3cFSP30RkcMJ7j7xFg9j8vnUVwQ"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "1"
+            argument = "--page-limit 1"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "--minimum-build-number 24014"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "--dry-run"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = ""
+            value = ""
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

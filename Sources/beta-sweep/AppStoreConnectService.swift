@@ -1,15 +1,24 @@
 import Foundation
 
-enum AppStoreConnectAPIService: String {
-    case allTesters = "https://api.appstoreconnect.apple.com/v1/betaTesters"
+enum AppStoreConnectAPIService {
+    static let betaTesters = "https://api.appstoreconnect.apple.com/v1/betaTesters"
+    static func betaTesters(for appID: String) -> String {
+        "https://api.appstoreconnect.apple.com/v1/apps/\(appID)/relationships/betaTesters"
+    }
 }
 
-struct AppStoreConnectService {
+enum AppStoreConnectAPIQuery: String {
+    case filterByApp = "filter[apps]"
+}
+
+struct AppStoreConnectClient {
     let urlSession: URLSession
 
     static func fetchTesters(_ token: String, appID: String, pageLimit: Int? = nil) async throws -> [Tester] {
         var allTesters: [Tester] = []
-        var nextURL: URL? = URL(string: AppStoreConnectAPIService.allTesters.rawValue)?.appending(queryItems: [URLQueryItem(name: "filter[apps]", value: appID)])
+        var nextURL: URL? = URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
+            URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID)
+        ])
         var pageCount = 1
         while let url = nextURL {
             var request = URLRequest(url: url)
@@ -33,12 +42,22 @@ struct AppStoreConnectService {
         return allTesters
     }
 
-    // TODO: find all testers on a build older than a given number
-    // List them out formatted with useful information
+    static func deleteTesters(_ testers: [Tester], token: String, appID: String) async throws {
+        let url = URL(string: AppStoreConnectAPIService.betaTesters(for: appID))!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        let body: [String: Any] = [
+            "data": testers.map { ["type": "betaTesters", "id": $0.id] }
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-    // TODO: Add dry run parameter and introduce real deletion
-
-    // When dry run false, delete users
-    // We will need to hit delete endpoint for
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 204 else {
+            throw URLError(.badServerResponse)
+        }
+        print("Deleted \(testers.count) tester(s)")
+    }
 }
