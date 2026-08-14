@@ -25,42 +25,58 @@ struct beta_sweep: AsyncParsableCommand {
 //    var dryRun: Bool = true
 
     mutating func run() async throws {
-        var testersToDelete: [RemovableTester] = []
         let allTesters = try await  AppStoreConnectClient.fetchTesters(token, appID: appID, pageLimit: pageLimit)
-        allTesters.forEach { tester in
-            print(tester.debugDescription)
-        }
+        allTesters.forEach { print($0.debugDescription) }
 
         // GET testers with an old build
-        let testersToRemove = allTesters.filter { tester in
-            guard let installedBuild = tester.attributes.appDevices.first?.appBuildVersion.buildVersion else { return true }
-            return installedBuild < minimumBuildNumber
-        }
-        testersToRemove.forEach { tester in
-            print(tester.debugDescription)
-        }
-        print("\(testersToRemove.count) testers on an old build")
+        let testersOnDeprecatedBuild = allTesters.filter { $0.isBelow(minimumBuild: minimumBuildNumber) }
 
-        testersToDelete = testersToRemove.map { RemovableTester(id: $0.id, buildVersion: $0.attributes.appDevices.first?.appBuildVersion.buildVersion, sessionCount: nil) }
+        print("\(testersOnDeprecatedBuild.count) testers on an old build")
+
+        var testersToDelete = testersOnDeprecatedBuild.map {
+            RemovableTester(
+                id: $0.id,
+                buildVersion: $0.installedBuildVersion,
+                sessionCount: nil)
+        }
+
         for index in testersToDelete.indices {
             let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID)
             testersToDelete[index].sessionCount = usageMetrics?.sessionCount
             print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions")
         }
-        print("\(testersToDelete.count) testers to remove")
 
         let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
-
         print("\(testersWithoutSessions.count) testers have had zero sessions")
 
+        // TODO: add deletion
         // Delete testers
 //        guard dryRun == false else { return }
-        print("DELETING TESTERS")
-//        try await AppStoreConnectClient.deleteTesters(testersToRemove, token: token, appID: appID)
+//        print("DELETING TESTERS")
+//        try await AppStoreConnectClient.deleteTesters(testersWithoutSessions, token: token, appID: appID)
     }
 }
 
-extension String {
+fileprivate extension Tester {
+    var installedBuildVersion: Int? {
+        attributes.appDevices.first?.appBuildVersion.buildVersion
+    }
+
+    func isBelow(minimumBuild: Int) -> Bool {
+        guard let installed = installedBuildVersion else { return true }
+                return installed < minimumBuild
+    }
+
+    var debugDescription: String {
+        let version = attributes.appDevices.first?.appBuildVersion.appVersionString ?? "No version"
+        let build = installedBuildVersion.map(String.init) ?? "No build"
+        return "[\(attributes.state)] \(id) - Version: \(version) Build: \(build)"
+    }
+}
+
+// MARK: String Parsing
+
+fileprivate extension String {
     var appVersionString: String? {
         components(separatedBy: " ").first
     }
@@ -72,15 +88,5 @@ extension String {
             return Int(buildString)
         }
         return nil
-    }
-}
-
-extension Tester {
-    var debugDescription: String {
-        let testerID = id
-        let testerState = attributes.state
-        let versionNumber = attributes.appDevices.first?.appBuildVersion.components(separatedBy: " ").first ?? "No version number"
-        let buildVersion = attributes.appDevices.first?.appBuildVersion.components(separatedBy: " ").last?.replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "") ?? "No build number"
-        return "[\(testerState)] \(testerID) - Version: \(versionNumber) Build: \(buildVersion)"
     }
 }
