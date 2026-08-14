@@ -32,6 +32,14 @@ enum AppStoreConnectServiceError: Error {
     case unknownURL
 }
 
+enum NetworkingError: Error {
+    case encodingFailed(innerError: EncodingError)
+    case decodingFailed(innerError: DecodingError)
+    case invalidStatusCode(statusCode: Int)
+    case requestFailed(innerError: URLError)
+    case otherError(innerError: Error)
+}
+
 struct AppStoreConnectClient {
     let token: String
     let appID: String
@@ -39,19 +47,39 @@ struct AppStoreConnectClient {
 
 
     static func fetchTesterPage(_ token: String, appID: String, nextURL: URL?) async throws -> TesterPage {
-        let url = nextURL ?? URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
-            URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID),
-            URLQueryItem(name: AppStoreConnectAPIQuery.limit.rawValue, value: "200"),
-        ])
-        guard let url else { throw AppStoreConnectServiceError.unknownURL }
-        var request = URLRequest(url: url)
-        print("Fetching from url \(url)")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let testerResponse = try JSONDecoder().decode(BetaTestersResponse.self, from: data)
-        let next = testerResponse.links.next
-        let nextURL = next != nil ? URL(string: next!)! : nil
-        return TesterPage(testers: testerResponse.data, nextURL: nextURL)
+
+        do {
+            let url = nextURL ?? URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
+                URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID),
+                URLQueryItem(name: AppStoreConnectAPIQuery.limit.rawValue, value: "200"),
+            ])
+            guard let url else { throw AppStoreConnectServiceError.unknownURL }
+            var request = URLRequest(url: url)
+            print("Fetching from url \(url)")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
+                throw NetworkingError.invalidStatusCode(statusCode: -1)
+            }
+
+            guard (200...299).contains(statusCode) else {
+                throw NetworkingError.invalidStatusCode(statusCode: statusCode)
+            }
+            let testerResponse = try JSONDecoder().decode(BetaTestersResponse.self, from: data)
+            let next = testerResponse.links.next
+            let nextURL = next != nil ? URL(string: next!)! : nil
+            return TesterPage(testers: testerResponse.data, nextURL: nextURL)
+        } catch let error as DecodingError {
+            throw NetworkingError.decodingFailed(innerError: error)
+        } catch let error as EncodingError {
+            throw NetworkingError.encodingFailed(innerError: error)
+        } catch let error as URLError {
+            throw NetworkingError.requestFailed(innerError: error)
+        } catch let error as NetworkingError {
+            throw error
+        } catch {
+            throw NetworkingError.otherError(innerError: error)
+        }
     }
 
     // TODO: fetch testers for app ID
