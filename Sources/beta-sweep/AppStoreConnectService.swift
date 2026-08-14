@@ -112,7 +112,7 @@ struct AppStoreConnectClient {
         return allTesters
     }
 
-    static func fetchMetrics(for tester: String, token: String, appID: String, period: UsagePeriod = .threeMonth) async throws -> UsageMetrics? {
+    static func fetchMetrics(for tester: String, token: String, appID: String, period: UsagePeriod = .month) async throws -> UsageMetrics? {
         var url = URL(string: AppStoreConnectAPIService.usage(for: tester))!
         url = url.appending(queryItems: [
             URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID),
