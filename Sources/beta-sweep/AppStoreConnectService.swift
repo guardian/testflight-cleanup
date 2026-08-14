@@ -12,7 +12,8 @@ enum AppStoreConnectAPIService {
 
 enum AppStoreConnectAPIQuery: String {
     case filterByApp = "filter[apps]"
-    case period = "period"
+    case period
+    case limit
 }
 
 enum UsagePeriod: String {
@@ -22,10 +23,36 @@ enum UsagePeriod: String {
     case year = "P365D"
 }
 
+struct TesterPage {
+    let testers: [Tester]
+    let nextURL: URL?
+}
+
+enum AppStoreConnectServiceError: Error {
+    case unknownURL
+}
+
 struct AppStoreConnectClient {
     let token: String
     let appID: String
     let urlSession: URLSession
+
+
+    static func fetchTesterPage(_ token: String, appID: String, nextURL: URL?) async throws -> TesterPage {
+        let url = nextURL ?? URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
+            URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID),
+            URLQueryItem(name: AppStoreConnectAPIQuery.limit.rawValue, value: "200"),
+        ])
+        guard let url else { throw AppStoreConnectServiceError.unknownURL }
+        var request = URLRequest(url: url)
+        print("Fetching from url \(url)")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let testerResponse = try JSONDecoder().decode(BetaTestersResponse.self, from: data)
+        let next = testerResponse.links.next
+        let nextURL = next != nil ? URL(string: next!)! : nil
+        return TesterPage(testers: testerResponse.data, nextURL: nextURL)
+    }
 
     // TODO: fetch testers for app ID
     // THEN: filter those with version

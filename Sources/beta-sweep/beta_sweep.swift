@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 
 struct RemovableTester {
     let id: String
@@ -25,35 +26,56 @@ struct beta_sweep: AsyncParsableCommand {
 //    var dryRun: Bool = true
 
     mutating func run() async throws {
-        let allTesters = try await  AppStoreConnectClient.fetchTesters(token, appID: appID, pageLimit: pageLimit)
-        allTesters.forEach { print($0.debugDescription) }
+        var nextURL: URL?
+        var pageIndex = 0
+        var totalRemoved = 0
+        var totalProcessed = 0
 
-        // GET testers with an old build
-        let testersOnDeprecatedBuild = allTesters.filter { $0.isBelow(minimumBuild: minimumBuildNumber) }
+        repeat {
+            pageIndex += 1
+            let page = try await AppStoreConnectClient.fetchTesterPage(token, appID: appID, nextURL: nextURL)
+            let testers = page.testers
+            nextURL = page.nextURL
 
-        print("\(testersOnDeprecatedBuild.count) testers on an old build")
+            print("--- Page \(pageIndex): \(testers.count) testers ---")
+            testers.forEach { print($0.debugDescription) }
 
-        var testersToDelete = testersOnDeprecatedBuild.map {
-            RemovableTester(
-                id: $0.id,
-                buildVersion: $0.installedBuildVersion,
-                sessionCount: nil)
-        }
+            // GET testers with an old build
+            let testersOnDeprecatedBuild = testers.filter { $0.isBelow(minimumBuild: minimumBuildNumber) }
 
-        for index in testersToDelete.indices {
-            let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID)
-            testersToDelete[index].sessionCount = usageMetrics?.sessionCount
-            print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions")
-        }
+            print("\(testersOnDeprecatedBuild.count) testers on an old build")
 
-        let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
-        print("\(testersWithoutSessions.count) testers have had zero sessions")
+            var testersToDelete = testersOnDeprecatedBuild.map {
+                RemovableTester(
+                    id: $0.id,
+                    buildVersion: $0.installedBuildVersion,
+                    sessionCount: nil)
+            }
 
-        // TODO: add deletion
-        // Delete testers
-//        guard dryRun == false else { return }
-//        print("DELETING TESTERS")
-//        try await AppStoreConnectClient.deleteTesters(testersWithoutSessions, token: token, appID: appID)
+            for index in testersToDelete.indices {
+                let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID)
+                testersToDelete[index].sessionCount = usageMetrics?.sessionCount
+                print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions")
+            }
+
+            let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
+            print("\(testersWithoutSessions.count) testers have had zero sessions")
+
+            // TODO: add deletion
+            // Delete testers
+    //        guard dryRun == false else { return }
+    //        print("DELETING TESTERS")
+    //        try await AppStoreConnectClient.deleteTesters(testersWithoutSessions, token: token, appID: appID)
+
+            totalRemoved += testersWithoutSessions.count
+            totalProcessed += testers.count
+
+            if let limit = pageLimit, pageIndex >= limit {
+                print("Reached page limit of \(limit)")
+                break
+            }
+        } while nextURL != nil
+        print("--- Done: \(totalRemoved) removable testers found across \(totalProcessed) total testers ---")
     }
 }
 
