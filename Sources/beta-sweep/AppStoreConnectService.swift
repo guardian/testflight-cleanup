@@ -5,15 +5,30 @@ enum AppStoreConnectAPIService {
     static func betaTesters(for appID: String) -> String {
         "https://api.appstoreconnect.apple.com/v1/apps/\(appID)/relationships/betaTesters"
     }
+    static func usage(for tester: String) -> String {
+        "https://api.appstoreconnect.apple.com/v1/betaTesters/\(tester)/metrics/betaTesterUsages"
+    }
 }
 
 enum AppStoreConnectAPIQuery: String {
     case filterByApp = "filter[apps]"
+    case period = "period"
+}
+
+enum UsagePeriod: String {
+    case week = "P7D"
+    case month = "P30D"
+    case threeMonth = "P90D"
+    case year = "P365D"
 }
 
 struct AppStoreConnectClient {
+    let token: String
+    let appID: String
     let urlSession: URLSession
 
+    // TODO: fetch testers for app ID
+    // THEN: filter those with version
     static func fetchTesters(_ token: String, appID: String, pageLimit: Int? = nil) async throws -> [Tester] {
         var allTesters: [Tester] = []
         var nextURL: URL? = URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
@@ -40,6 +55,20 @@ struct AppStoreConnectClient {
         }
         print("Found \(allTesters.count) tester(s) across all pages")
         return allTesters
+    }
+
+    static func fetchMetrics(for tester: String, token: String, appID: String, period: UsagePeriod = .threeMonth) async throws -> UsageMetrics? {
+        var url = URL(string: AppStoreConnectAPIService.usage(for: tester))!
+        url = url.appending(queryItems: [
+            URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID),
+            URLQueryItem(name: AppStoreConnectAPIQuery.period.rawValue, value: period.rawValue)
+        ])
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(BetaTesterUsageResponse.self, from: data)
+        return response.data.first?.dataPoints.first?.values
+
     }
 
     static func deleteTesters(_ testers: [Tester], token: String, appID: String) async throws {
