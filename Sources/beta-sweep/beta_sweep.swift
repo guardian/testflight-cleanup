@@ -49,7 +49,7 @@ struct beta_sweep: AsyncParsableCommand {
                 var testersToDelete = testersOnDeprecatedBuild.map {
                     RemovableTester(
                         id: $0.id,
-                        buildVersion: $0.installedBuildVersion,
+                        buildVersion: $0.latestInstalledBuild,
                         sessionCount: nil)
                 }
 
@@ -90,18 +90,21 @@ struct beta_sweep: AsyncParsableCommand {
 }
 
 fileprivate extension Tester {
-    var installedBuildVersion: Int? {
-        attributes.appDevices.first?.appBuildVersion.buildVersion
+    
+    /// A user may have the beta installed across multiple devices so it's important we check what the most recent build version is
+    var latestInstalledBuild: Int? {
+        let orderedDevices = attributes.appDevices.sorted { $0.appBuildVersion.buildVersion ?? 0 > $1.appBuildVersion.buildVersion ?? 0 }
+        return orderedDevices.first?.appBuildVersion.buildVersion
     }
 
     func isBelow(minimumBuild: Int) -> Bool {
-        guard let installed = installedBuildVersion else { return true }
+        guard let installed = latestInstalledBuild else { return true }
                 return installed < minimumBuild
     }
 
     var debugDescription: String {
         let version = attributes.appDevices.first?.appBuildVersion.appVersionString ?? "No version"
-        let build = installedBuildVersion.map(String.init) ?? "No build"
+        let build = latestInstalledBuild.map(String.init) ?? "No build"
         return "[\(attributes.state)] \(id) - Version: \(version) Build: \(build)"
     }
 }
