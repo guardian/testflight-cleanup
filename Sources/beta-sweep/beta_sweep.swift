@@ -1,5 +1,11 @@
 import ArgumentParser
 
+struct RemovableTester {
+    let id: String
+    var buildVersion: Int?
+    var sessionCount: Int?
+}
+
 @main
 struct beta_sweep: AsyncParsableCommand {
 
@@ -19,6 +25,7 @@ struct beta_sweep: AsyncParsableCommand {
 //    var dryRun: Bool = true
 
     mutating func run() async throws {
+        var testersToDelete: [RemovableTester] = []
         let allTesters = try await  AppStoreConnectClient.fetchTesters(token, appID: appID, pageLimit: pageLimit)
         allTesters.forEach { tester in
             print(tester.debugDescription)
@@ -33,13 +40,18 @@ struct beta_sweep: AsyncParsableCommand {
             print(tester.debugDescription)
         }
         print("\(testersToRemove.count) testers on an old build")
-        let testerIds = testersToRemove.map { $0.id }
-        for tester in testerIds {
-            let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: tester, token: token, appID: appID)
-            let sessionCount = usageMetrics?.sessionCount // FIXME: add error handling if unable to find session count
-            print("TESTER \(tester) has had \(sessionCount ?? 0) sessions")
+
+        testersToDelete = testersToRemove.map { RemovableTester(id: $0.id, buildVersion: $0.attributes.appDevices.first?.appBuildVersion.buildVersion, sessionCount: nil) }
+        for index in testersToDelete.indices {
+            let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID)
+            testersToDelete[index].sessionCount = usageMetrics?.sessionCount
+            print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions")
         }
-        print("\(testersToRemove.count) testers to remove")
+        print("\(testersToDelete.count) testers to remove")
+
+        let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
+
+        print("\(testersWithoutSessions.count) testers have had zero sessions")
 
         // Delete testers
 //        guard dryRun == false else { return }
