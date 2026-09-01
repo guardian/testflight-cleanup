@@ -8,13 +8,10 @@ struct RemovableTester {
 }
 
 @main
-struct beta_sweep: AsyncParsableCommand {
+struct testflight_cleanup: AsyncParsableCommand {
 
     @Option(help: "The App Store Connect app ID to filter testers by")
     var appID: String
-
-    @Option(help: "The token used to authenticate with App Store Connect")
-    var token: String
 
     @Option(help: "Page limit if required") 
     var pageLimit: Int? = nil
@@ -22,8 +19,8 @@ struct beta_sweep: AsyncParsableCommand {
     @Option(help: "Minimum build number a user should have installed")
     var minimumBuildNumber: Int
 
-//    @Option(help: "Dry run mode, no users will be removed")
-//    var dryRun: Bool = true
+    @Option(help: "Dry run mode, no users will be removed")
+    var dryRun: Bool = true
 
     mutating func run() async throws {
         var nextURL: URL?
