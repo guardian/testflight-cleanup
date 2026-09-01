@@ -31,6 +31,9 @@ struct beta_sweep: AsyncParsableCommand {
         var totalRemoved = 0
         var totalProcessed = 0
 
+        let currentDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let token = try AppStoreToken.generate(baseDir: currentDir)
+
         do {
             repeat {
                 pageIndex += 1
@@ -54,7 +57,8 @@ struct beta_sweep: AsyncParsableCommand {
                 }
 
                 for index in testersToDelete.indices {
-                    let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID)
+                    // Fetch usage metrics for testers over time period
+                    let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID, period: .month)
                     testersToDelete[index].sessionCount = usageMetrics?.sessionCount
                     print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions")
                 }

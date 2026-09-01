@@ -28,16 +28,24 @@ struct TesterPage {
     let nextURL: URL?
 }
 
-enum AppStoreConnectServiceError: Error {
-    case unknownURL
-}
+enum TestflightCleanupError: Error, CustomStringConvertible {
+    case missingEnvironment(String)
+    case missingPrivateKey
+    case apiError(String)
+    case invalidResponse
 
-enum NetworkingError: Error {
-    case encodingFailed(innerError: EncodingError)
-    case decodingFailed(innerError: DecodingError)
-    case invalidStatusCode(statusCode: Int)
-    case requestFailed(innerError: URLError)
-    case otherError(innerError: Error)
+    var description: String {
+        switch self {
+        case .missingEnvironment(let name):
+            return "Missing required environment variable: \(name)"
+        case .missingPrivateKey:
+            return "No private key found. Set APPSTORE_PRIVATE_KEY or place AuthKey.p8 in the repo root."
+        case .apiError(let message):
+            return message
+        case .invalidResponse:
+            return "Received an invalid response from the App Store Connect API."
+        }
+    }
 }
 
 struct AppStoreConnectClient {
@@ -53,37 +61,35 @@ struct AppStoreConnectClient {
                 URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID),
                 URLQueryItem(name: AppStoreConnectAPIQuery.limit.rawValue, value: "200"),
             ])
-            guard let url else { throw AppStoreConnectServiceError.unknownURL }
+            guard let url else { throw TestflightCleanupError.apiError("URL cannot be found") }
             var request = URLRequest(url: url)
             print("Fetching from url \(url)")
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
-                throw NetworkingError.invalidStatusCode(statusCode: -1)
+                throw TestflightCleanupError.apiError("Missing status code")
             }
 
             guard (200...299).contains(statusCode) else {
-                throw NetworkingError.invalidStatusCode(statusCode: statusCode)
+                throw TestflightCleanupError.apiError("Invalid status code \(statusCode)")
             }
             let testerResponse = try JSONDecoder().decode(BetaTestersResponse.self, from: data)
             let next = testerResponse.links.next
             let nextURL = next != nil ? URL(string: next!)! : nil
             return TesterPage(testers: testerResponse.data, nextURL: nextURL)
         } catch let error as DecodingError {
-            throw NetworkingError.decodingFailed(innerError: error)
+            throw TestflightCleanupError.apiError("Decoding error \(error)")
         } catch let error as EncodingError {
-            throw NetworkingError.encodingFailed(innerError: error)
+            throw TestflightCleanupError.apiError("Encoding error \(error)")
         } catch let error as URLError {
-            throw NetworkingError.requestFailed(innerError: error)
-        } catch let error as NetworkingError {
+            throw TestflightCleanupError.apiError("Request failed with error \(error)")
+        } catch let error as TestflightCleanupError {
             throw error
         } catch {
-            throw NetworkingError.otherError(innerError: error)
+            throw TestflightCleanupError.apiError("Request failed with error \(error)")
         }
     }
 
-    // TODO: fetch testers for app ID
-    // THEN: filter those with version
     static func fetchTesters(_ token: String, appID: String, pageLimit: Int? = nil) async throws -> [Tester] {
         var allTesters: [Tester] = []
         var nextURL: URL? = URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
