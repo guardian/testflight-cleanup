@@ -44,7 +44,7 @@ swift build
 ## Usage
 
 ```bash
-swift run beta-sweep \
+swift run testflight-cleanup \
   --app-id <YOUR_APP_ID> \
   --minimum-build-number <BUILD_NUMBER> \
   [--page-limit <LIMIT>] \
@@ -65,19 +65,19 @@ swift run beta-sweep \
 **Preview which testers would be removed (dry run):**
 
 ```bash
-swift run beta-sweep --app-id 1234567890 --minimum-build-number 150
+swift run testflight-cleanup --app-id 1234567890 --minimum-build-number 150
 ```
 
 **Remove inactive testers for real:**
 
 ```bash
-swift run beta-sweep --app-id 1234567890 --minimum-build-number 150 --dry-run false
+swift run testflight-cleanup --app-id 1234567890 --minimum-build-number 150 --dry-run false
 ```
 
 **Process only the first 3 pages:**
 
 ```bash
-swift run beta-sweep --app-id 1234567890 --minimum-build-number 150 --page-limit 3
+swift run testflight-cleanup --app-id 1234567890 --minimum-build-number 150 --page-limit 3
 ```
 
 ## Project Structure
