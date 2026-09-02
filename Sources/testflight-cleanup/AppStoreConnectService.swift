@@ -158,7 +158,7 @@ struct AppStoreConnectClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 204 || httpResponse.statusCode == 204 else {
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
         print("Deleted \(testers.count) tester(s)")
