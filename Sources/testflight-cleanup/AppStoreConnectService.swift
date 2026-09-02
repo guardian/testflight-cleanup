@@ -145,7 +145,7 @@ struct AppStoreConnectClient {
 
     }
 
-    static func deleteTesters(_ testers: [Tester], token: String, appID: String) async throws {
+    static func deleteTesters(_ testers: [RemovableTester], token: String, appID: String) async throws {
         let url = URL(string: AppStoreConnectAPIService.betaTesters(for: appID))!
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"

@@ -64,11 +64,12 @@ struct testflight_cleanup: AsyncParsableCommand {
                 let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
                 print("\(testersWithoutSessions.count) testers have had zero sessions in the last \(timePeriod.description)")
 
-                // TODO: add deletion
-                // Delete testers
-                //        guard dryRun == false else { return }
-                //        print("DELETING TESTERS")
-                //        try await AppStoreConnectClient.deleteTesters(testersWithoutSessions, token: token, appID: appID)
+                if dryRun {
+                    print("DRY RUN: would delete \(testersWithoutSessions.count) testers on page \(pageIndex)")
+                } else {
+                    print("DELETING TESTERS")
+                    try await AppStoreConnectClient.deleteTesters(testersWithoutSessions, token: token, appID: appID)
+                }
 
                 totalRemoved += testersWithoutSessions.count
                 totalProcessed += testers.count
