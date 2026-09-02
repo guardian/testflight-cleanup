@@ -57,11 +57,14 @@ struct testflight_cleanup: AsyncParsableCommand {
                     // Fetch usage metrics for testers over time period
                     let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID, period: .month)
                     testersToDelete[index].sessionCount = usageMetrics?.sessionCount
-                    print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions")
+                    let sessionText = testersToDelete[index].sessionCount.map(String.init) ?? "unknown"
+                    print("TESTER \(testersToDelete[index].id) has had \(sessionText) sessions")
                 }
 
                 let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
                 print("\(testersWithoutSessions.count) testers have had zero sessions")
+                let testersWithUnknownSessionCount = testersToDelete.filter { $0.sessionCount == nil }
+                print("\(testersWithUnknownSessionCount.count) testers have had nil sessions")
 
                 // TODO: add deletion
                 // Delete testers
