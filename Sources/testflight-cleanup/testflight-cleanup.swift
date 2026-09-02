@@ -28,6 +28,7 @@ struct testflight_cleanup: AsyncParsableCommand {
         var totalRemoved = 0
         var totalProcessed = 0
 
+        let timePeriod = UsagePeriod.month
         let currentDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let token = try AppStoreToken.generate(baseDir: currentDir)
 
@@ -55,13 +56,13 @@ struct testflight_cleanup: AsyncParsableCommand {
 
                 for index in testersToDelete.indices {
                     // Fetch usage metrics for testers over time period
-                    let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID, period: .month)
+                    let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID, period: timePeriod)
                     testersToDelete[index].sessionCount = usageMetrics?.sessionCount
-                    print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions")
+                    print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions in the last \(timePeriod.description)")
                 }
 
                 let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
-                print("\(testersWithoutSessions.count) testers have had zero sessions")
+                print("\(testersWithoutSessions.count) testers have had zero sessions in the last \(timePeriod.description)")
 
                 // TODO: add deletion
                 // Delete testers

@@ -21,6 +21,19 @@ enum UsagePeriod: String {
     case month = "P30D"
     case threeMonth = "P90D"
     case year = "P365D"
+
+    var description: String {
+        switch self {
+        case .week:
+            "one week"
+        case .month:
+            "one month"
+        case .threeMonth:
+            "three months"
+        case .year:
+            "one year"
+        }
+    }
 }
 
 struct TesterPage {
