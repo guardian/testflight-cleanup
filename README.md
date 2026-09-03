@@ -4,14 +4,17 @@ A command-line tool to clean up inactive TestFlight beta testers from your App S
 
 It pages through all beta testers for a given app, identifies those on outdated builds with zero sessions, and optionally removes them — helping you keep your tester list manageable.
 
+Note: If a build is expired in Testflight, session count is superfluous and therefore the tool does not fetch metric usage for individual testers, preventing unnecessary requests to the App Store Connect API. 
+
 ## How It Works
 
 For each page of testers, testflight-cleanup:
 
 1. **Fetches** beta testers from the App Store Connect API (200 per page)
 2. **Filters** testers whose latest installed build is below a given minimum
-3. **Checks usage** metrics (session count) for each filtered tester over the last 30 days
-4. **Deletes** testers with zero sessions (when dry run is disabled)
+3. **Checks expiry** if the build is expired in TestFlight (more than 90 days old)
+4. **Conditionally checks usage** metrics (session count) for each filtered tester over the last 30 days. (This step is only required if the build is NOT already expired).
+5. **Deletes** eligible testers (when dry run is disabled)
 
 Processing happens page-by-page so progress is reported incrementally, and partial results are still printed if an API error occurs mid-run.
 
