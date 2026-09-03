@@ -42,8 +42,9 @@ struct testflight_cleanup: AsyncParsableCommand {
                 print("--- Page \(pageIndex): \(testers.count) testers ---")
                 testers.forEach { print($0.debugDescription) }
 
+                let revokedTesters = testers.filter(\.isRevoked)
+                print("\(revokedTesters.count) testers are already revoked")
                 // GET testers with an old build
-                // EXCLUDE already revoked testers
                 let testersOnDeprecatedBuild = testers.filter { $0.isBelow(minimumBuild: minimumBuildNumber) && $0.isRevoked == false }
 
                 print("\(testersOnDeprecatedBuild.count) testers on an old build")
