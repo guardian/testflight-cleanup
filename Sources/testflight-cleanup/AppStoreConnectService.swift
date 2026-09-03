@@ -2,6 +2,7 @@ import Foundation
 
 enum AppStoreConnectAPIService {
     static let betaTesters = "https://api.appstoreconnect.apple.com/v1/betaTesters"
+    static let builds = "https://api.appstoreconnect.apple.com/v1/builds"
     static func betaTesters(for appID: String) -> String {
         "https://api.appstoreconnect.apple.com/v1/apps/\(appID)/relationships/betaTesters"
     }
@@ -14,6 +15,7 @@ enum AppStoreConnectAPIQuery: String {
     case filterByApp = "filter[apps]"
     case period
     case limit
+    case filterByVersion = "filter[version]"
 }
 
 enum UsagePeriod: String {
@@ -145,7 +147,7 @@ struct AppStoreConnectClient {
 
     }
 
-    static func deleteTesters(_ testers: [RemovableTester], token: String, appID: String) async throws {
+    static func deleteTesters(_ testers: [String], token: String, appID: String) async throws {
         let url = URL(string: AppStoreConnectAPIService.betaTesters(for: appID))!
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
@@ -153,7 +155,7 @@ struct AppStoreConnectClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "data": testers.map { ["type": "betaTesters", "id": $0.id] }
+            "data": testers.map { ["type": "betaTesters", "id": $0] }
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -162,5 +164,19 @@ struct AppStoreConnectClient {
             throw URLError(.badServerResponse)
         }
         print("Deleted \(testers.count) tester(s)")
+    }
+
+    // MARK: Build information
+
+    static func buildInformation(for buildNumber: Int, token: String) async throws  -> BuildAttributes? {
+        var url = URL(string: AppStoreConnectAPIService.builds)!
+        url.append(queryItems: [
+            URLQueryItem(name: AppStoreConnectAPIQuery.filterByVersion.rawValue, value: String(buildNumber))
+        ])
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(BuildInformationResponse.self, from: data)
+        return response.data.first?.attributes
     }
 }

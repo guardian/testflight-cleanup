@@ -44,36 +44,45 @@ struct testflight_cleanup: AsyncParsableCommand {
 
                 let revokedTesters = testers.filter(\.isRevoked)
                 print("\(revokedTesters.count) testers are already revoked")
+
+                // Check if build is already expired
+                let buildInfo = try await AppStoreConnectClient.buildInformation(for: minimumBuildNumber, token: token)
+                let buildIsExpired = buildInfo?.expired
+
                 // GET testers with an old build
                 let testersOnDeprecatedBuild = testers.filter { $0.isBelow(minimumBuild: minimumBuildNumber) && $0.isRevoked == false }
 
                 print("\(testersOnDeprecatedBuild.count) testers on an old build")
 
-                var testersToDelete = testersOnDeprecatedBuild.map {
-                    RemovableTester(
-                        id: $0.id,
-                        buildVersion: $0.latestInstalledBuild,
-                        sessionCount: nil)
-                }
 
-                for index in testersToDelete.indices {
-                    // Fetch usage metrics for testers over time period
-                    let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: testersToDelete[index].id, token: token, appID: appID, period: timePeriod)
-                    testersToDelete[index].sessionCount = usageMetrics?.sessionCount
-                    print("TESTER \(testersToDelete[index].id) has had \(testersToDelete[index].sessionCount ?? 0) sessions in the last \(timePeriod.description)")
-                }
-
-                let testersWithoutSessions = testersToDelete.filter { $0.sessionCount == 0 }
-                print("\(testersWithoutSessions.count) testers have had zero sessions in the last \(timePeriod.description)")
-
-                if dryRun {
-                    print("DRY RUN: would delete \(testersWithoutSessions.count) testers on page \(pageIndex)")
+                // If build is expired, no need to check session count
+                if buildIsExpired == true {
+                    print("Build \(minimumBuildNumber) is expired in Testflight, no need to check session count.")
+                    try await removeTesters(testersOnDeprecatedBuild.map { $0.id }, token: token, appID: appID, pageIndex: pageIndex)
+                    totalRemoved += testersOnDeprecatedBuild.count
                 } else {
-                    print("DELETING TESTERS")
-                    try await AppStoreConnectClient.deleteTesters(testersWithoutSessions, token: token, appID: appID)
+                    print("Build \(minimumBuildNumber) is not expired in Testflight, fetching user metrics to check session count")
+                    var removableTesters = testersOnDeprecatedBuild.map {
+                        RemovableTester(
+                            id: $0.id,
+                            buildVersion: $0.latestInstalledBuild,
+                            sessionCount: nil)
+                    }
+
+                    for index in removableTesters.indices {
+                        // Fetch usage metrics for testers over time period
+                        let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: removableTesters[index].id, token: token, appID: appID, period: timePeriod)
+                        removableTesters[index].sessionCount = usageMetrics?.sessionCount
+                        print("TESTER \(removableTesters[index].id) has had \(removableTesters[index].sessionCount ?? 0) sessions in the last \(timePeriod.description)")
+                    }
+
+                    let testersWithoutSessions = removableTesters.filter { $0.sessionCount == 0 }
+                    print("\(testersWithoutSessions.count) testers have had zero sessions in the last \(timePeriod.description)")
+
+                    try await removeTesters(testersWithoutSessions.map { $0.id }, token: token, appID: appID, pageIndex: pageIndex)
+                    totalRemoved += testersWithoutSessions.count
                 }
 
-                totalRemoved += testersWithoutSessions.count
                 totalProcessed += testers.count
 
                 if let limit = pageLimit, pageIndex >= limit {
@@ -87,6 +96,15 @@ struct testflight_cleanup: AsyncParsableCommand {
             throw error
         }
         printSummary(removed: totalRemoved, processed: totalProcessed)
+    }
+
+    private func removeTesters(_ testerIds: [String], token: String, appID: String, pageIndex: Int) async throws {
+        if dryRun {
+            print("DRY RUN: would delete \(testerIds.count) testers on page \(pageIndex)")
+        } else {
+            print("DELETING TESTERS")
+            try await AppStoreConnectClient.deleteTesters(testerIds, token: token, appID: appID)
+        }
     }
 
     private func printSummary(removed: Int, processed: Int) {
