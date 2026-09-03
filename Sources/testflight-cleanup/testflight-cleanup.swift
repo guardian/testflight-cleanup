@@ -43,7 +43,8 @@ struct testflight_cleanup: AsyncParsableCommand {
                 testers.forEach { print($0.debugDescription) }
 
                 // GET testers with an old build
-                let testersOnDeprecatedBuild = testers.filter { $0.isBelow(minimumBuild: minimumBuildNumber) }
+                // EXCLUDE already revoked testers
+                let testersOnDeprecatedBuild = testers.filter { $0.isBelow(minimumBuild: minimumBuildNumber) && $0.isRevoked == false }
 
                 print("\(testersOnDeprecatedBuild.count) testers on an old build")
 
@@ -103,6 +104,10 @@ fileprivate extension Tester {
     func isBelow(minimumBuild: Int) -> Bool {
         guard let installed = latestInstalledBuild else { return true }
                 return installed < minimumBuild
+    }
+
+    var isRevoked: Bool {
+        attributes.state == .REVOKED
     }
 
     var debugDescription: String {
