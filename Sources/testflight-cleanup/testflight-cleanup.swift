@@ -13,7 +13,7 @@ struct testflight_cleanup: AsyncParsableCommand {
     @Option(help: "The App Store Connect app ID to filter testers by")
     var appID: String
 
-    @Option(help: "Page limit if required") 
+    @Option(help: "Page limit if required")
     var pageLimit: Int? = nil
 
     @Option(help: "Minimum build number a user should have installed")
@@ -25,12 +25,21 @@ struct testflight_cleanup: AsyncParsableCommand {
     mutating func run() async throws {
         var nextURL: URL?
         var pageIndex = 0
-        var totalRemoved = 0
+        var totalCandidates = 0
+        var totalDeleted = 0
+        var totalUnknownSessions = 0
         var totalProcessed = 0
+        var candidateTesterIDs: [String] = []
 
         let timePeriod = UsagePeriod.month
         let currentDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let token = try AppStoreToken.generate(baseDir: currentDir)
+        // Build expiration is global for the run, so fetch once.
+        let buildInfo = try await AppStoreConnectClient.buildInformation(for: minimumBuildNumber, token: token)
+        let buildIsExpired = buildInfo?.expired == true
+        if buildInfo == nil {
+            print("Build \(minimumBuildNumber) could not be found; defaulting to session-count checks.")
+        }
 
         do {
             repeat {
@@ -38,16 +47,13 @@ struct testflight_cleanup: AsyncParsableCommand {
                 let page = try await AppStoreConnectClient.fetchTesterPage(token, appID: appID, nextURL: nextURL)
                 let testers = page.testers
                 nextURL = page.nextURL
+                totalProcessed += testers.count
 
                 print("--- Page \(pageIndex): \(testers.count) testers ---")
                 testers.forEach { print($0.debugDescription) }
 
                 let revokedTesters = testers.filter(\.isRevoked)
                 print("\(revokedTesters.count) testers are already revoked")
-
-                // Check if build is already expired
-                let buildInfo = try await AppStoreConnectClient.buildInformation(for: minimumBuildNumber, token: token)
-                let buildIsExpired = buildInfo?.expired
 
                 // GET testers with an old build
                 let testersOnDeprecatedBuild = testers.filter { $0.isBelow(minimumBuild: minimumBuildNumber) && $0.isRevoked == false }
@@ -56,10 +62,11 @@ struct testflight_cleanup: AsyncParsableCommand {
 
 
                 // If build is expired, no need to check session count
-                if buildIsExpired == true {
+                if buildIsExpired {
                     print("Build \(minimumBuildNumber) is expired in Testflight, no need to check session count.")
-                    try await removeTesters(testersOnDeprecatedBuild.map { $0.id }, token: token, appID: appID, pageIndex: pageIndex)
-                    totalRemoved += testersOnDeprecatedBuild.count
+                    let pageCandidateIDs = testersOnDeprecatedBuild.map(\.id)
+                    totalCandidates += pageCandidateIDs.count
+                    candidateTesterIDs.append(contentsOf: pageCandidateIDs)
                 } else {
                     print("Build \(minimumBuildNumber) is not expired in Testflight, fetching user metrics to check session count")
                     var removableTesters = testersOnDeprecatedBuild.map {
@@ -73,17 +80,22 @@ struct testflight_cleanup: AsyncParsableCommand {
                         // Fetch usage metrics for testers over time period
                         let usageMetrics = try await AppStoreConnectClient.fetchMetrics(for: removableTesters[index].id, token: token, appID: appID, period: timePeriod)
                         removableTesters[index].sessionCount = usageMetrics?.sessionCount
-                        print("TESTER \(removableTesters[index].id) has had \(removableTesters[index].sessionCount ?? 0) sessions in the last \(timePeriod.description)")
+                        let sessionText = removableTesters[index].sessionCount.map(String.init) ?? "unknown"
+                        print("TESTER \(removableTesters[index].id) has had \(sessionText) sessions in the last \(timePeriod.description)")
                     }
 
+                    let testersWithUnknownSessions = removableTesters.filter { $0.sessionCount == nil }
                     let testersWithoutSessions = removableTesters.filter { $0.sessionCount == 0 }
                     print("\(testersWithoutSessions.count) testers have had zero sessions in the last \(timePeriod.description)")
+                    if !testersWithUnknownSessions.isEmpty {
+                        print("\(testersWithUnknownSessions.count) testers have unknown session counts and will not be deleted")
+                    }
 
-                    try await removeTesters(testersWithoutSessions.map { $0.id }, token: token, appID: appID, pageIndex: pageIndex)
-                    totalRemoved += testersWithoutSessions.count
+                    totalUnknownSessions += testersWithUnknownSessions.count
+                    let pageCandidateIDs = testersWithoutSessions.map(\.id)
+                    totalCandidates += pageCandidateIDs.count
+                    candidateTesterIDs.append(contentsOf: pageCandidateIDs)
                 }
-
-                totalProcessed += testers.count
 
                 if let limit = pageLimit, pageIndex >= limit {
                     print("Reached page limit of \(limit)")
@@ -91,29 +103,63 @@ struct testflight_cleanup: AsyncParsableCommand {
                 }
             } while nextURL != nil
         } catch {
-            printSummary(removed: totalRemoved, processed: totalProcessed)
+            printSummary(candidates: totalCandidates, deleted: totalDeleted, unknownSessions: totalUnknownSessions, processed: totalProcessed)
             print("Error on page \(pageIndex): \(error)")
             throw error
         }
-        printSummary(removed: totalRemoved, processed: totalProcessed)
+
+        // Phase 2: delete only after pagination is complete to avoid cursor invalidation.
+        let uniqueCandidateIDs = uniquePreservingOrder(candidateTesterIDs)
+        print("Collected \(uniqueCandidateIDs.count) unique tester(s) for deletion")
+        totalDeleted = try await removeTestersInBatches(uniqueCandidateIDs, token: token, appID: appID)
+
+        printSummary(candidates: totalCandidates, deleted: totalDeleted, unknownSessions: totalUnknownSessions, processed: totalProcessed)
     }
 
-    private func removeTesters(_ testerIds: [String], token: String, appID: String, pageIndex: Int) async throws {
+    private func removeTestersInBatches(_ testerIds: [String], token: String, appID: String, batchSize: Int = 200) async throws -> Int {
+        guard !testerIds.isEmpty else {
+            print("No testers to delete")
+            return 0
+        }
+
+        let batches = testerIds.chunked(into: batchSize)
+        var deleted = 0
+
         if dryRun {
-            print("DRY RUN: would delete \(testerIds.count) testers on page \(pageIndex)")
+            print("DRY RUN: would delete \(testerIds.count) testers across \(batches.count) batch(es)")
+            return 0
         } else {
-            print("DELETING TESTERS")
-            try await AppStoreConnectClient.deleteTesters(testerIds, token: token, appID: appID)
+            for (index, batch) in batches.enumerated() {
+                print("DELETING BATCH \(index + 1)/\(batches.count) with \(batch.count) tester(s)")
+                try await AppStoreConnectClient.deleteTesters(batch, token: token, appID: appID)
+                deleted += batch.count
+            }
+            return deleted
         }
     }
 
-    private func printSummary(removed: Int, processed: Int) {
-        print("--- Done: \(removed) removable testers found across \(processed) total testers ---")
+    private func uniquePreservingOrder(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+
+    private func printSummary(candidates: Int, deleted: Int, unknownSessions: Int, processed: Int) {
+        print("--- Done: processed \(processed) testers; found \(candidates) deletion candidate(s); deleted \(deleted); unknown session count \(unknownSessions) ---")
+    }
+}
+
+fileprivate extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map { start in
+            let end = Swift.min(start + size, count)
+            return Array(self[start..<end])
+        }
     }
 }
 
 fileprivate extension Tester {
-    
+
     /// A user may have the beta installed across multiple devices so it's important we check what the most recent build version is
     var latestInstalledBuild: Int? {
         let orderedDevices = attributes.appDevices.sorted { $0.appBuildVersion.buildVersion ?? 0 > $1.appBuildVersion.buildVersion ?? 0 }
@@ -122,7 +168,7 @@ fileprivate extension Tester {
 
     func isBelow(minimumBuild: Int) -> Bool {
         guard let installed = latestInstalledBuild else { return true }
-                return installed < minimumBuild
+        return installed < minimumBuild
     }
 
     var isRevoked: Bool {
