@@ -53,7 +53,8 @@ swift run testflight-cleanup \
   --app-id <YOUR_APP_ID> \
   --minimum-build-number <BUILD_NUMBER> \
   [--page-limit <LIMIT>] \
-  [--dry-run <true|false>]
+  [--dry-run <true|false>] \
+  [--verbose-logging <true|false>]
 ```
 
 ### Options
@@ -64,6 +65,7 @@ swift run testflight-cleanup \
 | `--minimum-build-number` | Testers on a build below this number are candidates for removal | *required* |
 | `--page-limit` | Maximum number of pages to process (useful for testing) | all pages |
 | `--dry-run` | When `true`, no testers are actually deleted | `true` |
+| `--verbose-logging` | When `true`, debug level logs are printed | `false` |
 
 ### Examples
 
@@ -71,6 +73,12 @@ swift run testflight-cleanup \
 
 ```bash
 swift run testflight-cleanup --app-id 1234567890 --minimum-build-number 150
+```
+
+**Preview which testers would be removed (dry run + verbose logging):**
+
+```bash
+swift run testflight-cleanup --app-id 1234567890 --minimum-build-number 150 --verbose-logging true
 ```
 
 **Remove inactive testers for real:**
