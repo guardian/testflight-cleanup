@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 
 enum AppStoreConnectAPIService {
     static let betaTesters = "https://api.appstoreconnect.apple.com/v1/betaTesters"
@@ -69,7 +70,7 @@ struct AppStoreConnectClient {
     let urlSession: URLSession
 
 
-    static func fetchTesterPage(_ token: String, appID: String, nextURL: URL?) async throws -> TesterPage {
+    static func fetchTesterPage(_ token: String, appID: String, nextURL: URL?, logger: Logger) async throws -> TesterPage {
 
         do {
             let url = nextURL ?? URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
@@ -78,7 +79,7 @@ struct AppStoreConnectClient {
             ])
             guard let url else { throw TestflightCleanupError.apiError("URL cannot be found") }
             var request = URLRequest(url: url)
-            print("Fetching from url \(url)")
+            logger.debug("Fetching from url \(url)")
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
@@ -105,7 +106,7 @@ struct AppStoreConnectClient {
         }
     }
 
-    static func fetchTesters(_ token: String, appID: String, pageLimit: Int? = nil) async throws -> [Tester] {
+    static func fetchTesters(_ token: String, appID: String, pageLimit: Int? = nil, logger: Logger) async throws -> [Tester] {
         var allTesters: [Tester] = []
         var nextURL: URL? = URL(string: AppStoreConnectAPIService.betaTesters)?.appending(queryItems: [
             URLQueryItem(name: AppStoreConnectAPIQuery.filterByApp.rawValue, value: appID)
@@ -113,9 +114,9 @@ struct AppStoreConnectClient {
         var pageCount = 1
         while let url = nextURL {
             var request = URLRequest(url: url)
-            print("Fetching from url \(url)")
+            logger.debug("Fetching from url \(url)")
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            print("Fetching page \(pageCount)")
+            logger.debug("Fetching page \(pageCount)")
             let (data, _) = try await URLSession.shared.data(for: request)
             let testerResponse = try JSONDecoder().decode(BetaTestersResponse.self, from: data)
             allTesters.append(contentsOf: testerResponse.data)
@@ -129,7 +130,7 @@ struct AppStoreConnectClient {
                 nextURL = nil
             }
         }
-        print("Found \(allTesters.count) tester(s) across all pages")
+        logger.debug("Found \(allTesters.count) tester(s) across all pages")
         return allTesters
     }
 
@@ -147,7 +148,7 @@ struct AppStoreConnectClient {
 
     }
 
-    static func deleteTesters(_ testers: [String], token: String, appID: String) async throws {
+    static func deleteTesters(_ testers: [String], token: String, appID: String, logger: Logger) async throws {
         let url = URL(string: AppStoreConnectAPIService.betaTesters(for: appID))!
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
@@ -163,7 +164,7 @@ struct AppStoreConnectClient {
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 204 || httpResponse.statusCode == 202 else {
             throw URLError(.badServerResponse)
         }
-        print("Deleted \(testers.count) tester(s)")
+        logger.info("Deleted \(testers.count) tester(s)")
     }
 
     // MARK: Build information
